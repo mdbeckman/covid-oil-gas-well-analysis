@@ -1,0 +1,45 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r Front matter}
+# clean up environment
+rm(list = ls())
+
+# necessary packages
+library(tidyverse)
+library(data.table)
+library(lubridate)
+
+# raw data intake
+load("BakkenRaw.Rda")
+MarcellusRaw <- fread("PA-2020-OilGasProduction.csv")
+
+```
+
+
+# Preprocessing
+
+- filter to Whiting & XTO firms only
+- clean up `Company` since names are unwieldy, and Whiting reported inconsistently (i.e., in the wider 2019-2021 data)
+
+
+
+```{r}
+BakkenClean <- 
+  BakkenRaw %>%
+  filter(grepl(pattern = "XTO|Whiting", x = Company, ignore.case = TRUE)) %>%
+  mutate(Company = if_else(condition = grepl(pattern = "Whiting", x = Company, ignore.case = TRUE), 
+                           true = "Whiting", false = Company), 
+         Company = if_else(condition = grepl(pattern = "XTO", x = Company, ignore.case = TRUE), 
+                           true = "XTO", false = Company))
+
+MarcellusClean <- 
+  MarcellusRaw %>%
+  filter(grepl(pattern = "EQT", x = OPERATOR, ignore.case = TRUE)) %>%
+  mutate(PRODUCTION_PERIOD_START_DATE = mdy(PRODUCTION_PERIOD_START_DATE), 
+         PRODUCTION_PERIOD_END_DATE = mdy(PRODUCTION_PERIOD_END_DATE))
+
+```
+
