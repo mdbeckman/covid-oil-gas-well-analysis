@@ -16,6 +16,20 @@ library(lubridate)
 load("BakkenRaw.Rda")
 MarcellusRaw <- fread("PA-2020-OilGasProduction.csv")
 
+
+# distance function
+haversine <- function(lat1, lon1, lat2, lon2, Radius = 6371){ # in km
+  # returns a single number distance in kilometers
+  lat1 <- pi*lat1/180; lat2 <- pi*lat2/180; 
+  lon1 <- pi*lon1/180; lon2 <- pi*lon2/180;
+  dlon <- lon2 - lon1 
+  dlat <- lat2 - lat1 
+  a <- (sin(dlat/2))^2 + cos(lat1) * cos(lat2) * (sin(dlon/2))^2 
+  c <- 2 * atan2( sqrt(a), sqrt(1 - a) ) 
+  Radius * c 
+}
+
+
 ```
 
 
@@ -39,7 +53,118 @@ MarcellusClean <-
   MarcellusRaw %>%
   filter(grepl(pattern = "EQT", x = OPERATOR, ignore.case = TRUE)) %>%
   mutate(PRODUCTION_PERIOD_START_DATE = mdy(PRODUCTION_PERIOD_START_DATE), 
-         PRODUCTION_PERIOD_END_DATE = mdy(PRODUCTION_PERIOD_END_DATE))
+         PRODUCTION_PERIOD_END_DATE = mdy(PRODUCTION_PERIOD_END_DATE)) %>%
+  rename(lat = WELL_LATITUDE, long = WELL_LONGITUDE)
 
 ```
+
+
+
+# Mapping the wells
+
+Simple map
+
+```{r}
+library(leaflet)
+library(devtools)
+
+# Leaflet is a little annoying about colors... here's what I found:
+# <https://stackoverflow.com/questions/41533583/r-leaflet-adding-colors-for-character-variables>
+# If you want to use predefined palettes in the RColorBrewer package:
+factpal <- colorFactor(
+  palette = 'Dark2',
+  domain = BakkenClean$Company
+)
+
+
+# where to center the map
+BakkenClean %>%
+  summarise(avglat = mean(Lat, na.rm = TRUE), 
+            avglang = mean(Long, na.rm = TRUE))
+
+BakkenWellMap <- 
+  BakkenClean %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(radius = 2, color = ~factpal(Company)) %>%
+  setView(-103, 48, zoom = 7) # used avg lat & long for ND wells
+
+BakkenWellMap
+
+```
+```{r}
+# where to center the map
+MarcellusClean %>%
+  summarise(avglat = mean(lat, na.rm = TRUE), 
+            avglang = mean(long, na.rm = TRUE))
+
+# draw map
+MarcellusWellMap <- 
+  MarcellusClean %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(radius = 2) %>%
+  setView(-79.2, 40.4, zoom = 7) # used avg lat & long for PA wells
+
+MarcellusWellMap
+
+
+```
+
+
+```{r}
+library("rnaturalearth")
+library("rnaturalearthdata")
+library(maps)
+library(sf)
+library(rgeos)
+theme_set(theme_bw())
+
+# world data as a shape file
+world <- ne_countries(scale = "medium", returnclass = "sf")
+class(world)
+
+states <- st_as_sf(map("state", plot = FALSE, fill = TRUE))
+counties <- st_as_sf(map("county", plot = FALSE, fill = TRUE))
+
+
+# county data for PA
+counties_pa <- subset(counties, grepl("pennsylvania", counties$ID))
+counties_pa$area <- as.numeric(st_area(counties_pa))
+head(counties_pa)
+
+# set range
+range(MarcellusClean$lat)
+range(MarcellusClean$long)
+
+# plot PA
+ggplot(data = world) +
+  geom_sf() +
+  geom_sf(data = states, fill = NA) + 
+  geom_sf(data = counties_pa, fill = NA, color = gray(.5)) +
+  geom_point(data = MarcellusClean, aes(x = long, y = lat), alpha = 0.1) +  
+  coord_sf(xlim = c(-83, -73), ylim = c(39, 42.5), expand = FALSE)
+
+
+```
+
+
+```{r}
+# county data for ND
+counties_nd <- subset(counties, grepl("north dakota", counties$ID))
+counties_nd$area <- as.numeric(st_area(counties_nd))
+head(counties_nd)
+
+# plot ND
+ggplot(data = world) +
+  geom_sf() +
+  geom_sf(data = states, fill = NA) + 
+  geom_sf(data = counties_nd, fill = NA, color = gray(.5)) +
+  geom_point(data = BakkenClean, aes(x = Long, y = Lat, color = Company), alpha = 0.05) +  
+  coord_sf(xlim = c(-105, -95), ylim = c(45, 50), expand = FALSE)
+
+
+```
+
+
 
